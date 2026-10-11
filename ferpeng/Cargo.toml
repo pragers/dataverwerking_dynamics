@@ -1,0 +1,22 @@
+[package]
+name = "dataverwerking_dynamics"
+version = "0.1.0"
+edition = "2024"
+workspace = ".."
+publish = false
+
+[dependencies]
+inquire = {version = "0.9.4", features = [], optional = true}
+symplex = "0.33.0"
+
+[lib]
+name = "ferpeng"
+
+[features]
+default = ["build-binary"]
+build-binary = ["inquire"]
+
+[[bin]]
+name = "FormEng"
+path = "src/main.rs"
+required-features = ["build-binary"]

@@ -6,13 +6,13 @@ use symplex::prelude::*;
 pub struct Formula {
     formula: String,
     expression: Ex,
-    vars: Vec<MeasurementSymbol>,
+    pub vars: Vec<MeasurementSymbol>,
     ctx: Context,
 }
 
 #[derive(Debug, Clone)]
 pub struct MeasurementSymbol {
-    name: String,
+    pub name: String,
     symbol: Ex,
     error_symbol: Ex,
 }
@@ -94,12 +94,23 @@ impl Formula {
                 .eval_f64_with(&substitutions_values)
                 .map_err(|e| DataProcessingError::EvaluationError(e.to_string()))
         }?;
+
         let final_error = {
-            let substitutions_error: Vec<(&Ex, f64)> = self
+            let mut substitutions_error: Vec<(&Ex, f64)> = self
                 .vars
                 .iter()
                 .filter_map(|var| values.get(&var.name).map(|value| (&var.symbol, value.0)))
                 .collect();
+            let mut error_vals: Vec<(&Ex, f64)> = self
+                .vars
+                .iter()
+                .filter_map(|var| {
+                    values
+                        .get(&var.name)
+                        .map(|value| (&var.error_symbol, value.1))
+                })
+                .collect();
+            substitutions_error.append(&mut error_vals);
             self.get_error_formula()?
                 .expression
                 .eval_f64_with(&substitutions_error)

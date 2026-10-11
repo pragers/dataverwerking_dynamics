@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::prelude::*;
 
 #[derive(Debug, Clone)]
@@ -34,6 +36,12 @@ impl Measurement {
             MeasurementError::Relative(rel) => rel * value,
         };
         Measurement(value, error_val)
+    }
+}
+
+impl fmt::Display for Measurement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} +- {}", self.0, self.1)
     }
 }
 

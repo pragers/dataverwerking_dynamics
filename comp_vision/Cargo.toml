@@ -1,0 +1,13 @@
+[package]
+name = "comp_vision"
+description = "The computervision package for dataverwerking-dynamics."
+version = "0.1.0"
+edition = "2024"
+workspace = ".."
+publish = false
+
+[dependencies]
+opencv = "0.101.1"
+
+
+

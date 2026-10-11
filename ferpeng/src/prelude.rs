@@ -1,7 +1,7 @@
 pub use crate::measurements::Measurement;
 
 use std::{
-    fmt::Display,
+    error, fmt,
     ops::{Deref, DerefMut},
 };
 
@@ -30,7 +30,9 @@ pub enum DataProcessingError {
 
 pub type ErrorResult<T> = std::result::Result<T, DataProcessingError>;
 
-impl Display for DataProcessingError {
+impl error::Error for DataProcessingError {}
+
+impl fmt::Display for DataProcessingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DataProcessingError::MismatchedSize(values, errors) => write!(
