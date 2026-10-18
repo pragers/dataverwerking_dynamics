@@ -1,37 +1,42 @@
 use std::path::Path;
 
+pub mod ostrack;
+
 use opencv::{
-    core::{self, Mat, Rect_},
+    core::Rect_,
     dnn,
-    highgui::{destroy_all_windows, select_roi_1},
     video::{
         self, TrackerDaSiamRPN, TrackerDaSiamRPN_Params, TrackerDaSiamRPN_ParamsTrait,
         TrackerNano_ParamsTrait, TrackerVit_ParamsTrait,
     },
 };
 
-#[derive(serde::Serialize)]
+use crate::{
+    prelude::WithCenter,
+    tracker::ostrack::{OSTrack, load_model},
+};
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Coordinates {
-    x: f64,
-    y: f64,
+    x: f32,
+    y: f32,
 }
 
 impl Coordinates {
-    pub fn new(x: f64, y: f64) -> Self {
+    pub fn new(x: f32, y: f32) -> Self {
         return Self { x, y };
     }
-    pub fn x(&self) -> f64 {
+    pub fn x(&self) -> f32 {
         self.x
     }
-    pub fn y(&self) -> f64 {
+    pub fn y(&self) -> f32 {
         self.y
     }
 }
 
 impl From<Rect_<i32>> for Coordinates {
     fn from(value: Rect_<i32>) -> Self {
-        let x = (value.x as f64) + (value.width as f64 / 2.);
-        let y = (value.y as f64) + (value.height as f64 / 2.);
+        let (x, y) = value.get_center();
         return Self { x, y };
     }
 }
@@ -39,18 +44,26 @@ impl From<Rect_<i32>> for Coordinates {
 // trait that implements the functions for trackers such that then can be returned as a box<dyn> object.
 
 pub trait AnyTracker: std::fmt::Debug {
-    fn init(&mut self, frame: &core::Mat, bbox: core::Rect) -> opencv::Result<()>;
-    fn update(&mut self, frame: &core::Mat, bbox: &mut core::Rect) -> opencv::Result<bool>;
+    fn init(&mut self, frame: &opencv::core::Mat, bbox: opencv::core::Rect) -> opencv::Result<()>;
+    fn update(
+        &mut self,
+        frame: &opencv::core::Mat,
+        bbox: &mut opencv::core::Rect,
+    ) -> opencv::Result<bool>;
 }
 
 impl<T> AnyTracker for T
 where
     T: video::TrackerTrait + std::fmt::Debug,
 {
-    fn init(&mut self, frame: &core::Mat, bbox: core::Rect) -> opencv::Result<()> {
+    fn init(&mut self, frame: &opencv::core::Mat, bbox: opencv::core::Rect) -> opencv::Result<()> {
         video::TrackerTrait::init(self, frame, bbox)
     }
-    fn update(&mut self, frame: &core::Mat, bbox: &mut core::Rect) -> opencv::Result<bool> {
+    fn update(
+        &mut self,
+        frame: &opencv::core::Mat,
+        bbox: &mut opencv::core::Rect,
+    ) -> opencv::Result<bool> {
         video::TrackerTrait::update(self, frame, bbox)
     }
 }
@@ -62,6 +75,7 @@ pub enum TrackerType {
     NANO,
     VIT,
     MIL,
+    OSTrack,
 }
 
 // Create a tracker using the models in model_dir
@@ -146,20 +160,14 @@ pub fn create_tracker(
             let tracker = video::TrackerMIL::create(params)?;
             return Ok(Box::new(tracker));
         }
+        TrackerType::OSTrack => {
+            let session = load_model(model_dir.join("ostrack384.onnx")).map_err(|r| {
+                println!("{:#?}", r);
+                opencv::Error::new(-2, "Couldnt create session")
+            })?;
+            return Ok(Box::new(OSTrack::new(session)));
+        }
     }
-}
-
-// Get the bounding box of the item at frame 1.
-pub fn get_roi_box(frame: &Mat) -> opencv::Result<core::Rect> {
-    let box1 = select_roi_1(&frame, true, false, false)?;
-    if box1.area() == 0 {
-        return Err(opencv::Error::new(
-            opencv::core::StsError,
-            "No ROI is selected, Exiting...",
-        ));
-    }
-    destroy_all_windows()?;
-    Ok(box1)
 }
 
 // Select the backend for deep neural networks to run on, based on the currently available backends.

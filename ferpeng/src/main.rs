@@ -2,10 +2,7 @@
 
 use std::{collections::HashMap, error::Error};
 
-use ferpeng::{
-    formula::{self, Formula},
-    prelude::*,
-};
+use ferpeng::{formula::Formula, prelude::*};
 use inquire::{Confirm, CustomType, Text};
 
 pub fn main() -> Result<(), Box<dyn Error>> {

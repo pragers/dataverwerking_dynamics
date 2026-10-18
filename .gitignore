@@ -1,2 +1,6 @@
 # ignore build target files.
 target/
+models/
+
+*.mp4
+*.csv

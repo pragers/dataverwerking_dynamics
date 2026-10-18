@@ -8,12 +8,16 @@ publish = false
 
 [dependencies]
 csv = "1.4.0"
+
+ndarray = "0.17.2"
 opencv = "0.101.1"
+ort = {version = "2.0.0-rc.14", features = ["cuda"]}
 serde = {version = "1.0.229", features = ["derive"]}
 
 [lib]
 name = "comp_vision"
 
 [target.'cfg(debug_assertions)'.dependencies]
+inquire = "0.9.4"
 env_logger = "0.11.11"
 log = "0.4.34"

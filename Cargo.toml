@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["comp_vision","ferpeng"]
+members = ["comp_vision", "dynamics_main","ferpeng"]
 
 
 
