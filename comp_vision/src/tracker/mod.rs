@@ -13,7 +13,7 @@ use opencv::{
 
 use crate::{
     prelude::WithCenter,
-    tracker::ostrack::{OSTrack, load_model},
+    tracker::ostrack::{OSTrack},
 };
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -161,11 +161,7 @@ pub fn create_tracker(
             return Ok(Box::new(tracker));
         }
         TrackerType::OSTrack => {
-            let session = load_model(model_dir.join("ostrack384.onnx")).map_err(|r| {
-                println!("{:#?}", r);
-                opencv::Error::new(-2, "Couldnt create session")
-            })?;
-            return Ok(Box::new(OSTrack::new(session)));
+            return Ok(Box::new(OSTrack::new(model_dir.to_path_buf())));
         }
     }
 }
@@ -191,12 +187,6 @@ fn select_dnn_backend() -> opencv::Result<(dnn::Backend, dnn::Target)> {
             .iter()
             .any(|pair| pair.get_0() == backend && pair.get_1() == target)
         {
-            #[cfg(debug_assertions)]
-            log::debug!(
-                "Backend: {:#?}, Target:{:#?}",
-                backend.clone(),
-                target.clone()
-            );
             return Ok((backend, target));
         }
     }

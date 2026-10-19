@@ -1,9 +1,9 @@
 use std::{
     ffi::OsStr,
+    fmt::Debug,
     path::{Path, PathBuf},
 };
 
-use log::warn;
 use opencv::{
     core::{Mat, MatTraitConst, Point_, Size_},
     highgui::{destroy_all_windows, imshow, select_roi_1, wait_key},
@@ -60,8 +60,7 @@ impl<V> Video<V> {
 }
 
 impl Video<Loaded> {
-    pub fn new(path: &Path) -> opencv::Result<Video<Loaded>> {
-        let path = path.to_path_buf();
+    pub fn new(path: PathBuf) -> opencv::Result<Video<Loaded>> {
         let mut vid_cap = videoio::VideoCapture::from_file(&path, opencv::videoio::CAP_ANY)?;
 
         if !vid_cap.is_opened()? {
@@ -80,8 +79,7 @@ impl Video<Loaded> {
         }
         let frame_count = vid_cap.get(videoio::CAP_PROP_FRAME_COUNT)?;
         let fps = vid_cap.get(videoio::CAP_PROP_FPS)?;
-        #[cfg(debug_assertions)]
-        log::debug!("{:?}", frame);
+
         Ok(Video {
             path,
             vid_cap,
@@ -112,7 +110,17 @@ impl Video<WithTracker> {
         let mut bbox = get_roi_box(&self.frame)?;
         self.state.tracker.init(&self.frame, bbox)?;
 
-        let mut output_video = create_output_video("output.mp4", self.fps, self.frame.size()?)?;
+        let mut output_video = create_output_video(
+            format!(
+                "./output_6/{}.mp4",
+                self.path
+                    .file_stem()
+                    .expect("File has no name")
+                    .to_string_lossy()
+            ),
+            self.fps,
+            self.frame.size()?,
+        )?;
         let mut output_vec: Vec<Coordinates> =
             Vec::with_capacity(self.vid_cap.get(videoio::CAP_PROP_FRAME_COUNT)? as usize);
 
@@ -152,7 +160,7 @@ impl Video<WithTracker> {
 
             output_vec.push(bbox.into());
         }
-
+        destroy_all_windows()?;
         Ok(Video {
             path: self.path,
             vid_cap: self.vid_cap,
@@ -192,31 +200,29 @@ impl Video<TrackingFinished> {
                 Err(_) => amount_failed += 1,
             });
 
-        #[cfg(debug_assertions)]
-        warn!("failed {} writes to csv", amount_failed);
-
         Ok(())
     }
 }
 
 fn create_output_video(
-    filename: impl AsRef<OsStr>,
+    filename: impl AsRef<OsStr> + Debug,
     fps: f64,
     frame_size: Size_<i32>,
 ) -> opencv::Result<VideoWriter> {
     let mut output_video = VideoWriter::default()?;
-    output_video.open(
-        filename,
-        VideoWriter::fourcc('m', 'p', '4', 'v')?,
-        fps,
-        frame_size,
-        true,
-    )?;
+    let fourcc = videoio::VideoWriter::fourcc('m', 'p', '4', 'v')?;
+    println!("{:#?}", filename);
+    println!("Output path: {:?}", filename);
+    println!("FPS: {}", fps);
+    println!("Frame size: {:?}", frame_size);
+    println!("FourCC: {}", fourcc);
+
+    output_video.open(filename, fourcc, fps, frame_size, true)?;
 
     if !output_video.is_opened()? {
         return Err(opencv::Error::new(
             opencv::core::StsError,
-            "Failed to open video.",
+            "Failed to open output video.",
         ));
     }
 

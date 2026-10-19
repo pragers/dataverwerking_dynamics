@@ -1,4 +1,8 @@
-use std::{f32::consts::PI, path::PathBuf};
+use std::{
+    f32::consts::PI,
+    path::PathBuf,
+    sync::{Mutex, OnceLock},
+};
 
 use opencv::core::{Mat, MatTraitConst, MatTraitConstManual, Rect, Size};
 use ort::{
@@ -31,8 +35,8 @@ impl Prediction {
 }
 
 #[derive(Debug)]
-pub struct OSTrack {
-    session: Session,
+pub struct OSTrack<'a> {
+    session: &'a Mutex<Session>,
     template: Option<Vec<f32>>,
     state: Option<Rect>,
 
@@ -42,8 +46,9 @@ pub struct OSTrack {
     search_factor: f32,
 }
 
-impl OSTrack {
-    pub fn new(session: Session) -> Self {
+impl<'a> OSTrack<'a> {
+    pub fn new(path: PathBuf) -> Self {
+        let session = get_session(path.join("ostrack384.onnx"));
         Self {
             session,
             template: None,
@@ -65,14 +70,18 @@ impl OSTrack {
 
         Ok((processed_img, crop.resize_factor))
     }
-    fn run_inference(&mut self, search: &[f32]) -> Result<Prediction, Box<dyn std::error::Error>> {
+    fn run_inference(
+        &mut self,
+        search: &[f32],
+    ) -> Result<Option<Prediction>, Box<dyn std::error::Error>> {
         let template = self.template.as_ref().ok_or("Tracker not initialized")?;
 
         let z = Tensor::from_array(([1, 3, 192, 192], template.clone()))?;
 
         let x = Tensor::from_array(([1, 3, 384, 384], search.to_vec()))?;
+        let mut session = self.session.lock().expect("Failed to lock session");
 
-        let outputs = self.session.run(ort::inputs![
+        let outputs = session.run(ort::inputs![
             "z" => z,
             "x" => x,
         ])?;
@@ -131,12 +140,21 @@ impl OSTrack {
         let top = top_left_corner_y.floor() as i32;
         let right = bottom_right_corner_x.ceil() as i32;
         let bottom = bottom_right_corner_y.ceil() as i32;
+        let new = Rect::new(left, top, right - left, bottom - top);
+        if previous.area() as f32 * 1.5 < new.area() as f32
+        // || ((previous.x as f32 - new.x as f32).powf(2.)
+        //     + (previous.y as f32 - new.y as f32).powf(2.))
+        // .sqrt()
+        //     > 150.
+        {
+            return Ok(None);
+        }
 
         Ok(Some(Rect::new(left, top, right - left, bottom - top)))
     }
 }
 
-impl AnyTracker for OSTrack {
+impl<'a> AnyTracker for OSTrack<'a> {
     fn init(&mut self, frame: &Mat, bbox: Rect) -> opencv::Result<()> {
         if bbox.width <= 0 || bbox.height <= 0 {
             return Err(opencv::Error::new(
@@ -161,18 +179,21 @@ impl AnyTracker for OSTrack {
         let prediction = self
             .run_inference(&search)
             .map_err(|e| opencv::Error::new(opencv::core::StsError, e.to_string()))?;
+        if let Some(pred) = prediction {
+            let Some(new_bbox) =
+                self.decode_prediction(pred, previous, resize_factor, frame.size()?)?
+            else {
+                *bbox = previous;
+                return Ok(false);
+            };
+            self.state = Some(new_bbox);
+            *bbox = new_bbox;
 
-        let Some(new_bbox) =
-            self.decode_prediction(prediction, previous, resize_factor, frame.size()?)?
-        else {
+            return Ok(true);
+        } else {
             *bbox = previous;
             return Ok(false);
         };
-
-        self.state = Some(new_bbox);
-        *bbox = new_bbox;
-
-        Ok(true)
     }
 }
 
@@ -284,7 +305,11 @@ fn preprocess(image: &Mat) -> opencv::Result<Vec<f32>> {
 const FEATURE_SIZE: usize = 24;
 const MAP_AREA: usize = FEATURE_SIZE * FEATURE_SIZE;
 
-fn decode_ostrack(scores: &[f32], sizes: &[f32], offsets: &[f32]) -> Result<Prediction, String> {
+fn decode_ostrack(
+    scores: &[f32],
+    sizes: &[f32],
+    offsets: &[f32],
+) -> Result<Option<Prediction>, String> {
     // Check if the ouput matches:
     // score_map: shape = [1,1,24,24] probability score for each position.
     // size_map: shape = [1,2,24,24] width and height of bounding box.
@@ -305,14 +330,17 @@ fn decode_ostrack(scores: &[f32], sizes: &[f32], offsets: &[f32]) -> Result<Pred
                 0.5 * (1.0 - (2.0 * PI * (x + 1) as f32 / (FEATURE_SIZE + 1) as f32).cos());
             let window_y =
                 0.5 * (1.0 - (2.0 * PI * (y + 1) as f32 / (FEATURE_SIZE + 1) as f32).cos());
-
-            let score = scores[index] * window_x * window_y;
+            let penalty_strength = 1.1_f32;
+            let score = scores[index] * (window_x * window_y).powf(penalty_strength);
 
             if score > best_score {
                 best_score = score;
                 best_index = index;
             }
         }
+    }
+    if best_score < 0.4 {
+        return Ok(None);
     }
     // Use integer division and modulo to turn 1d index into a 2d coordinate.
     let x = best_index % FEATURE_SIZE;
@@ -325,12 +353,18 @@ fn decode_ostrack(scores: &[f32], sizes: &[f32], offsets: &[f32]) -> Result<Pred
     let offset_x = offsets[best_index];
     let offset_y = offsets[MAP_AREA + best_index];
 
-    Ok(Prediction {
+    Ok(Some(Prediction {
         center_x: (x as f32 + offset_x) / FEATURE_SIZE as f32,
         center_y: (y as f32 + offset_y) / FEATURE_SIZE as f32,
         width,
         height,
-    })
+    }))
+}
+
+static SESSION: OnceLock<Mutex<Session>> = OnceLock::new();
+
+pub fn get_session(path: PathBuf) -> &'static Mutex<Session> {
+    SESSION.get_or_init(|| Mutex::new(load_model(path).expect("Failed to load OSTrack model")))
 }
 
 pub fn load_model(path: PathBuf) -> ort::Result<Session> {
@@ -339,5 +373,6 @@ pub fn load_model(path: PathBuf) -> ort::Result<Session> {
     let session = Session::builder(&env)?
         .with_auto_device(policy)?
         .commit_from_file(path)?;
+
     Ok(session)
 }

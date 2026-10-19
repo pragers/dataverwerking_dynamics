@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 ferpeng = {path = "../ferpeng"}
 comp_vision = {path = "../comp_vision"}
+polars = {version = "0.55.2", features = ["diff"]}
