@@ -11,20 +11,24 @@ use opencv::{
     },
 };
 
-use crate::{
-    prelude::WithCenter,
-    tracker::ostrack::{OSTrack},
-};
+use crate::{prelude::WithCenter, tracker::ostrack::OSTrack};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Coordinates {
     x: f32,
     y: f32,
+    width: Option<f32>,
+    height: Option<f32>,
 }
 
 impl Coordinates {
-    pub fn new(x: f32, y: f32) -> Self {
-        return Self { x, y };
+    pub fn new(x: f32, y: f32, width: Option<f32>, height: Option<f32>) -> Self {
+        return Self {
+            x,
+            y,
+            width,
+            height,
+        };
     }
     pub fn x(&self) -> f32 {
         self.x
@@ -37,7 +41,12 @@ impl Coordinates {
 impl From<Rect_<i32>> for Coordinates {
     fn from(value: Rect_<i32>) -> Self {
         let (x, y) = value.get_center();
-        return Self { x, y };
+        return Self {
+            x,
+            y,
+            width: Some(value.width as f32),
+            height: Some(value.height as f32),
+        };
     }
 }
 

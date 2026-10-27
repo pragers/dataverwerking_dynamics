@@ -1,6 +1,11 @@
 # ignore build target files.
 target/
 models/
+output/
+output1/
+ball_videos/
+new_vids/
+videos/
 
 *.mp4
 *.csv

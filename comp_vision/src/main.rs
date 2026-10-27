@@ -18,17 +18,22 @@ fn main() -> opencv::Result<()> {
             continue;
         };
 
-        let Ok(tracked_vid) = vid
+        let tracked_vid = match vid
             .add_tracker(
                 TrackerType::OSTrack,
                 Path::new(r"B:\Projects\dataverwerking_dynamics\models"),
             )?
             .track()
-        else {
-            println!("Video {:#?} failed to be tracked", file.path());
-            continue;
+        {
+            Ok(tracked_vid) => tracked_vid,
+            Err(msg) => {
+                println!("{msg:#?}");
+                println!("Video {:#?} failed to be tracked", file.path());
+                continue;
+            }
         };
-        let csv_name = format!("./output_6/{}.csv", name.to_string_lossy());
+
+        let csv_name = format!("./output/data/data_{}.csv", name.to_string_lossy());
         tracked_vid.save_to_csv(Path::new(&csv_name))?;
     }
 

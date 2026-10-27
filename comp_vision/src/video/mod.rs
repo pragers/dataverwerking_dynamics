@@ -112,7 +112,7 @@ impl Video<WithTracker> {
 
         let mut output_video = create_output_video(
             format!(
-                "./output_6/{}.mp4",
+                "./output/videos/tracked_{}.mp4",
                 self.path
                     .file_stem()
                     .expect("File has no name")
@@ -161,6 +161,7 @@ impl Video<WithTracker> {
             output_vec.push(bbox.into());
         }
         destroy_all_windows()?;
+        output_video.release()?;
         Ok(Video {
             path: self.path,
             vid_cap: self.vid_cap,
